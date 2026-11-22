@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createResume } from "@/lib/data/client";
+import { createResume, appPath } from "@/lib/data/client";
 
 /** 首页动作：AI 生成 / 新建空白 / 上传解析导入（PDF、Word）——双模式 */
 export function HomeActions() {
@@ -57,7 +57,7 @@ export function HomeActions() {
   return (
     <>
       <a
-        href="/create"
+        href={appPath("/create")}
         className="rounded-lg bg-blue-700 px-6 py-2.5 text-white hover:bg-blue-800"
       >
         ✨ AI 生成简历
