@@ -58,6 +58,7 @@ export function PreviewPage({
   const innerW = contentWidth(settings.pageMargin);
   return (
     <div
+      className="preview-zoom"
       style={{
         width: PAGE_WIDTH,
         minHeight: PAGE_HEIGHT,

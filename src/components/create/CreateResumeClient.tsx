@@ -2,6 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { generateResume } from "@/lib/ai/generate";
+import { createResume } from "@/lib/data/client";
+import { extractFileText } from "@/lib/parse/extract";
 
 /**
  * AI 生成简历页：用户文字描述自身情况（可多传辅助资料）→ AI 生成草稿 → 进入编辑器。
@@ -22,19 +25,24 @@ export function CreateResumeClient() {
     setBusy(true);
     setNote("AI 正在生成简历草稿，约需 30–90 秒…");
     try {
-      const form = new FormData();
-      form.append("description", description);
-      for (const f of files) form.append("file", f);
-      const res = await fetch("/api/ai/generate", { method: "POST", body: form });
-      const out = await res.json();
-      if (!res.ok) {
-        setNote(`生成失败：${out.error ?? res.status}`);
-        return;
+      const materials: { name: string; text: string }[] = [];
+      for (const f of files.slice(0, 5)) {
+        try {
+          const text = await extractFileText(f);
+          if (text.trim()) materials.push({ name: f.name, text: text.trim() });
+        } catch (err) {
+          setNote(err instanceof Error ? err.message : String(err));
+          return;
+        }
       }
-      router.push(`/editor/${out.id}`);
-    } catch {
-      setNote("网络错误，请重试");
-    } finally {
+      const result = await generateResume({ description, materials });
+      const doc = await createResume({
+        title: `${result.data.basics.name || "AI"}的简历`,
+        data: result.data,
+      });
+      router.push(`/editor?id=${doc.id}`);
+    } catch (e) {
+      setNote(`生成失败：${e instanceof Error ? e.message : String(e)}`);
       setBusy(false);
     }
   }

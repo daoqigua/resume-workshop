@@ -1,19 +1,26 @@
-import { listResumes } from "@/lib/resume/store";
-import { ensureSeed } from "@/lib/seed";
+"use client";
+
+import { useEffect, useState } from "react";
+import { listResumes } from "@/lib/data/client";
 import { ApplicationBoard } from "@/components/applications/ApplicationBoard";
 import { BackBar } from "@/components/nav/BackBar";
 
-export const metadata = { title: "投递追踪 — 简历工坊" };
-export const dynamic = "force-dynamic";
+export default function ApplicationsPage() {
+  const [resumes, setResumes] = useState<{ id: string; title: string }[] | null>(null);
 
-export default async function ApplicationsPage() {
-  await ensureSeed();
-  const resumes = await listResumes();
+  useEffect(() => {
+    listResumes().then(setResumes);
+  }, []);
+
   return (
     <>
       <BackBar title="一岗一简历 · 投递状态追踪" />
       <main className="mx-auto max-w-6xl px-6 py-8">
-        <ApplicationBoard resumes={resumes} />
+        {resumes === null ? (
+          <p className="text-sm text-gray-500">加载中…</p>
+        ) : (
+          <ApplicationBoard resumes={resumes} />
+        )}
       </main>
     </>
   );

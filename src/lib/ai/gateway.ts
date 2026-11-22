@@ -4,12 +4,13 @@
  * 未配置密钥时，业务层回退到本地规则引擎，产品功能不中断。
  */
 
-import { getEffectiveAiConfig, type AiSettings } from "@/lib/settings";
+import { resolveAiConfig, isAiConfiguredRuntime } from "./config";
+import type { AiSettings } from "@/lib/settings";
 
 export type ChatMsg = { role: "system" | "user" | "assistant"; content: string };
 
 export async function isAiConfigured(): Promise<boolean> {
-  return (await getEffectiveAiConfig()) !== null;
+  return isAiConfiguredRuntime();
 }
 
 /** 从模型输出中提取第一个完整 JSON 对象（容错散文包裹） */
@@ -44,7 +45,7 @@ export async function chatJSON<T>(
   timeoutMs = 60_000, // reasoning 模型思考链较长，60s 起步
   configOverride?: AiSettings, // 设置测试接口用：用未保存的配置试连
 ): Promise<T | null> {
-  const cfg = configOverride ?? (await getEffectiveAiConfig());
+  const cfg = await resolveAiConfig(configOverride);
   if (!cfg?.aiApiKey) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);

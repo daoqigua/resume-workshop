@@ -9,6 +9,12 @@ import {
   type ApplicationDoc,
   type ApplicationStatus,
 } from "@/lib/resume/schema";
+import {
+  listApplications,
+  createApplication,
+  updateApplicationStatus,
+  deleteApplication,
+} from "@/lib/data/client";
 
 type ResumeItem = { id: string; title: string };
 
@@ -31,7 +37,7 @@ export function ApplicationBoard({ resumes }: { resumes: ResumeItem[] }) {
   const [busy, setBusy] = useState(false);
 
   async function load() {
-    setItems(await fetch("/api/applications").then((r) => r.json()));
+    setItems(await listApplications());
     setLoaded(true);
   }
   useEffect(() => {
@@ -42,11 +48,7 @@ export function ApplicationBoard({ resumes }: { resumes: ResumeItem[] }) {
     if (!company.trim() || !resumeId) return;
     setBusy(true);
     try {
-      await fetch("/api/applications", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeId, company, position }),
-      });
+      await createApplication({ resumeId, company, position });
       setCompany("");
       setPosition("");
       await load();
@@ -57,16 +59,12 @@ export function ApplicationBoard({ resumes }: { resumes: ResumeItem[] }) {
 
   async function setStatus(id: string, status: ApplicationStatus) {
     setItems((arr) => arr.map((a) => (a.id === id ? { ...a, status } : a)));
-    await fetch(`/api/applications/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
+    await updateApplicationStatus(id, status);
   }
 
   async function remove(id: string) {
     setItems((arr) => arr.filter((a) => a.id !== id));
-    await fetch(`/api/applications/${id}`, { method: "DELETE" });
+    await deleteApplication(id);
   }
 
   return (
@@ -118,7 +116,7 @@ export function ApplicationBoard({ resumes }: { resumes: ResumeItem[] }) {
         ) : null}
       </div>
 
-      {/* 记录列表（按状态分组的看板） */}
+      {/* 状态分组看板 */}
       {loaded && items.length === 0 ? (
         <p className="text-sm text-gray-500">还没有投递记录。</p>
       ) : null}
@@ -150,7 +148,7 @@ export function ApplicationBoard({ resumes }: { resumes: ResumeItem[] }) {
                     </div>
                     {a.position ? <div className="mt-0.5 text-xs text-gray-500">{a.position}</div> : null}
                     <div className="mt-1 flex items-center justify-between text-xs text-gray-400">
-                      <Link href={`/editor/${a.resumeId}`} className="max-w-[60%] truncate text-blue-600 hover:underline">
+                      <Link href={`/editor?id=${a.resumeId}`} className="max-w-[60%] truncate text-blue-600 hover:underline">
                         {resumes.find((r) => r.id === a.resumeId)?.title ?? a.resumeId}
                       </Link>
                       <span>

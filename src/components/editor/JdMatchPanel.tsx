@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Btn } from "./ui";
+import { matchJd, rewriteForJd } from "@/lib/ai/jdMatch";
+import { createResume, appPath } from "@/lib/data/client";
 import type { JdMatchReport } from "@/lib/resume/schema";
 
 const TYPE_LABEL: Record<string, string> = { hard: "硬技能", soft: "软能力", implicit: "隐性要求" };
 
 /**
  * JD 对标面板（M2）：粘贴职位描述 → 匹配分 + 关键词缺口 + 改写建议 → 一键生成对标版本。
+ * AI 调用走 isomorphic 网关（完整版服务端 / 静态版浏览器直连）。
  */
 export function JdMatchPanel({
   resumeId,
@@ -17,7 +19,6 @@ export function JdMatchPanel({
   resumeId: string;
   onClose: () => void;
 }) {
-  const router = useRouter();
   const [jd, setJd] = useState("");
   const [report, setReport] = useState<JdMatchReport | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -33,20 +34,17 @@ export function JdMatchPanel({
     setAnalyzing(true);
     setNote("");
     try {
-      const res = await fetch("/api/jd/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeId, jd }),
-      });
-      const out = await res.json();
-      if (!res.ok) {
-        setNote(`分析失败：${out.error ?? res.status}`);
+      const { getResume } = await import("@/lib/data/client");
+      const doc = await getResume(resumeId);
+      if (!doc) {
+        setNote("简历不存在");
         return;
       }
+      const out = await matchJd(jd, doc.data);
       setReport(out.report);
       setAiFlag(out.ai);
-    } catch {
-      setNote("网络错误，请重试");
+    } catch (e) {
+      setNote(`分析失败：${String(e).slice(0, 80)}`);
     } finally {
       setAnalyzing(false);
     }
@@ -56,21 +54,26 @@ export function JdMatchPanel({
     setRewriting(true);
     setNote("正在按 JD 定向改写并创建新版本…（约 1 分钟）");
     try {
-      const res = await fetch("/api/jd/rewrite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resumeId, jd }),
-      });
-      const out = await res.json();
-      if (!res.ok) {
-        setNote(`生成失败：${out.error ?? res.status}`);
+      const { getResume } = await import("@/lib/data/client");
+      const doc = await getResume(resumeId);
+      if (!doc) {
+        setNote("简历不存在");
         return;
       }
-      // 打开新生成的对标版本
-      window.open(`/editor/${out.id}`, "_blank");
-      setNote(`已生成对标版本（匹配分 ${out.matchScore}）：${out.title}，已在新页打开`);
-    } catch {
-      setNote("网络错误，请重试");
+      const { report: snap } = await matchJd(jd, doc.data);
+      const { data } = await rewriteForJd(jd, doc.data);
+      const newDoc = await createResume({
+        title: `【JD 版】${doc.data.basics.headline || doc.title}`,
+        data: data ?? doc.data,
+        settings: doc.settings,
+        parentResumeId: doc.id,
+        targetJd: jd,
+        jdMatch: snap,
+      });
+      window.open(appPath(`/editor?id=${newDoc.id}`), "_blank");
+      setNote(`已生成对标版本（匹配分 ${snap.score}）：${newDoc.title}，已在新页打开`);
+    } catch (e) {
+      setNote(`生成失败：${String(e).slice(0, 80)}`);
     } finally {
       setRewriting(false);
     }
@@ -109,7 +112,7 @@ export function JdMatchPanel({
             ) : null}
           </div>
           {report ? (
-            <div className="space-y-1.5 overflow-y-auto rounded bg-white p-2 text-xs" style={{ maxHeight: 180 }}>
+            <div className="max-h-[180px] space-y-1.5 overflow-y-auto rounded bg-white p-2 text-xs">
               <div>
                 <span className="font-semibold text-gray-600">已命中（{report.matched.length}）：</span>
                 <span className="text-green-700">{report.matched.join("、") || "无"}</span>

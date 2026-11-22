@@ -2,19 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { createResume } from "@/lib/data/client";
 
-/** 首页动作：AI 生成 / 新建空白 / 上传解析导入（PDF、Word） */
+/** 首页动作：AI 生成 / 新建空白 / 上传解析导入（PDF、Word）——双模式 */
 export function HomeActions() {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
 
-  async function createResume() {
+  async function onCreateResume() {
     setCreating(true);
     try {
-      const res = await fetch("/api/resumes", { method: "POST" });
-      const doc = await res.json();
-      router.push(`/editor/${doc.id}`);
+      const doc = await createResume({});
+      router.push(`/editor?id=${doc.id}`);
     } finally {
       setCreating(false);
     }
@@ -25,16 +25,29 @@ export function HomeActions() {
     if (!f) return;
     setImporting(true);
     try {
-      const form = new FormData();
-      form.append("file", f);
-      const res = await fetch("/api/parse", { method: "POST", body: form });
-      if (!res.ok) {
-        const out = await res.json().catch(() => ({}));
-        alert(`解析失败：${out.error ?? res.status}`);
+      const { extractFileText } = await import("@/lib/parse/extract");
+      const { parseResumeText } = await import("@/lib/parse/parser");
+      const { parseResumeWithAI } = await import("@/lib/ai/parseResume");
+      const { isAiConfigured } = await import("@/lib/ai/gateway");
+
+      const text = await extractFileText(f);
+      if (!text.trim()) {
+        alert("文件中未提取到文本（PDF 可能是扫描图片版）");
         return;
       }
-      const doc = await res.json();
-      router.push(`/editor/${doc.id}`);
+      let data;
+      if (await isAiConfigured()) {
+        const aiData = await parseResumeWithAI(text);
+        if (aiData) data = aiData;
+      }
+      const result = data ?? parseResumeText(text).data;
+      const doc = await createResume({
+        title: `${result.basics.name || "导入"}的简历`,
+        data: result,
+      });
+      router.push(`/editor?id=${doc.id}`);
+    } catch (err) {
+      alert(`解析失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setImporting(false);
       e.target.value = "";
@@ -50,7 +63,7 @@ export function HomeActions() {
         ✨ AI 生成简历
       </a>
       <button
-        onClick={createResume}
+        onClick={onCreateResume}
         disabled={creating}
         className="rounded-lg border border-blue-700 px-6 py-2.5 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
       >

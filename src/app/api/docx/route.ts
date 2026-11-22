@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!doc) return NextResponse.json({ error: "resume not found" }, { status: 404 });
 
   // 读取证件照（若有）
-  let photo: { buf: Buffer; ext: string } | undefined;
+  let photo: { buf: Uint8Array; ext: string } | undefined;
   if (doc.photo) {
     try {
       const dir = path.join(process.cwd(), "data", "photos");
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       );
       if (file) {
         photo = {
-          buf: await fs.readFile(path.join(dir, file)),
+          buf: new Uint8Array(await fs.readFile(path.join(dir, file))),
           ext: path.extname(file),
         };
       }
@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const buf = await buildDocx(doc.data, doc.settings, photo);
+  const blob = await buildDocx(doc.data, doc.settings, photo);
+  const buf = Buffer.from(await blob.arrayBuffer());
   const filename = encodeURIComponent(`${doc.title || "简历"}.docx`);
   return new NextResponse(new Uint8Array(buf), {
     headers: {

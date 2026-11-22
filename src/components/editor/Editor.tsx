@@ -12,6 +12,15 @@ import { TemplateRenderer, TEMPLATE_META, THEME_PRESETS } from "@/components/tem
 import { SECTION_LABELS, type SectionKey } from "@/lib/resume/schema";
 import type { ResumeDoc } from "@/lib/resume/schema";
 import type { DiagnosisReport } from "@/lib/ai/diagnose";
+import {
+  IS_STATIC,
+  updateResume,
+  exportResumePdf,
+  exportResumeDocx,
+  uploadPhoto as clientUploadPhoto,
+  deletePhoto as clientDeletePhoto,
+  getPhotoUrl,
+} from "@/lib/data/client";
 
 export function Editor({ initial }: { initial: ResumeDoc }) {
   const [store] = useState(() => createEditorStore(initial));
@@ -35,14 +44,10 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
   const lastSavedAt = store((s) => s.lastSavedAt);
   dirtyRef.current = dirty;
 
-  /* ---------- 自动保存（防抖 800ms） ---------- */
+  /* ---------- 自动保存（防抖 800ms；双模式统一走 client 数据层） ---------- */
   const save = React.useCallback(async () => {
     const s = store.getState();
-    await fetch(`/api/resumes/${s.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: s.title, data: s.data, settings: s.settings }),
-    });
+    await updateResume(s.id, { title: s.title, data: s.data, settings: s.settings });
     store.getState().markSaved();
   }, [store]);
 
@@ -78,49 +83,39 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
     setExporting(true);
     try {
       if (dirtyRef.current) await save();
-      const id = store.getState().id;
-      const res = await fetch("/api/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (!res.ok) {
-        alert(`导出失败：${res.status}`);
-        return;
+      const s = store.getState();
+      await exportResumePdf(s.id, s.title);
+      if (IS_STATIC) {
+        alert("已调起浏览器打印：在打印对话框中选择「另存为 PDF」，纸张 A4、边距按当前设置。");
       }
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${store.getState().title || "简历"}.pdf`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert(String(e instanceof Error ? e.message : e));
     } finally {
       setExporting(false);
     }
   }
 
   /* ---------- 证件照 ---------- */
-  const photoUrl = photoVersion
-    ? `/api/photos/${initial.id}?v=${photoVersion}`
-    : undefined;
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const photoUrl = IS_STATIC ? (photoDataUrl ?? undefined) : photoVersion ? `/api/photos/${initial.id}?v=${photoVersion}` : undefined;
+
+  useEffect(() => {
+    if (!IS_STATIC) return;
+    getPhotoUrl(initial.id).then((u) => setPhotoDataUrl(u));
+  }, [initial.id]);
 
   async function uploadPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
     setPhotoBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", f);
-      const res = await fetch(`/api/photos/${initial.id}`, {
-        method: "PUT",
-        body: form,
-      });
-      const out = await res.json();
-      if (!res.ok) {
-        alert(`上传失败：${out.error ?? res.status}`);
+      const out = await clientUploadPhoto(initial.id, f);
+      if (!out.ok) {
+        alert(`上传失败：${out.error}`);
         return;
       }
-      setPhotoVersion(out.photo);
+      setPhotoVersion(out.photo ?? "");
+      if (IS_STATIC) setPhotoDataUrl(await getPhotoUrl(initial.id));
     } finally {
       setPhotoBusy(false);
       e.target.value = "";
@@ -130,8 +125,9 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
   async function deletePhoto() {
     setPhotoBusy(true);
     try {
-      await fetch(`/api/photos/${initial.id}`, { method: "DELETE" });
+      await clientDeletePhoto(initial.id);
       setPhotoVersion("");
+      setPhotoDataUrl(null);
     } finally {
       setPhotoBusy(false);
     }
@@ -143,21 +139,9 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
     try {
       if (dirtyRef.current) await save();
       const s = store.getState();
-      const res = await fetch("/api/docx", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: s.id }),
-      });
-      if (!res.ok) {
-        alert(`导出失败：${res.status}`);
-        return;
-      }
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${s.title || "简历"}.docx`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await exportResumeDocx(s.id, s.title);
+    } catch (e) {
+      alert(String(e instanceof Error ? e.message : e));
     } finally {
       setExportingWord(false);
     }
@@ -195,7 +179,7 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
   return (
     <div className="flex h-screen flex-col">
       {/* 工具栏 */}
-      <header className="border-b bg-white px-4 py-2.5">
+      <header className="print-hide border-b bg-white px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/" className="text-sm text-blue-700 hover:underline">
             ← 首页
@@ -342,7 +326,7 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
 
       {/* 主体：左表单 / 右预览 */}
       <div className="flex min-h-0 flex-1">
-        <div className="w-[430px] shrink-0 space-y-5 overflow-y-auto bg-gray-100 p-4">
+        <div className="print-hide w-[430px] shrink-0 space-y-5 overflow-y-auto bg-gray-100 p-4">
           <section className="space-y-2">
             <h3 className="text-sm font-semibold text-gray-700">基本信息</h3>
             <div className="rounded-lg border border-gray-200 bg-white p-3">
@@ -431,8 +415,8 @@ export function Editor({ initial }: { initial: ResumeDoc }) {
           ))}
         </div>
 
-        <div ref={previewBoxRef} className="flex-1 overflow-y-auto bg-gray-200/60 p-6">
-          <div className="mx-auto" style={{ width: PAGE_WIDTH * scale }}>
+        <div ref={previewBoxRef} className="print-area flex-1 overflow-y-auto bg-gray-200/60 p-6">
+          <div className="preview-wrap mx-auto" style={{ width: PAGE_WIDTH * scale }}>
             <PreviewPage settings={settings} scale={scale}>
               <TemplateRenderer data={data} settings={settings} photoUrl={photoUrl} />
             </PreviewPage>

@@ -53,8 +53,8 @@ export async function buildDocx(
   data: ResumeData,
   settings: ResumeSettings,
   /** 证件照（可选）：随 Word 导出，右对齐置于姓名上方 */
-  photo?: { buf: Buffer; ext: string },
-): Promise<Buffer> {
+  photo?: { buf: Uint8Array; ext: string },
+): Promise<Blob> {
   const color = settings.themeColor.replace("#", "").toUpperCase() || "2F5AA8";
   const b = data.basics;
   const children: Paragraph[] = [];
@@ -186,5 +186,6 @@ export async function buildDocx(
     styles: { default: { document: { run: { font: FONT, size: 21 } } } },
     sections: [{ properties: { page: { margin: { top: 720, bottom: 720, left: 720, right: 720 } } }, children }],
   });
-  return Buffer.from(await Packer.toBuffer(doc));
+  // Packer.toBlob 在浏览器与 Node(20+，Blob 全局) 均可用，统一返回 Blob
+  return Packer.toBlob(doc);
 }

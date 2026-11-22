@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Btn } from "@/components/editor/ui";
+import { getAiSettingsView, saveAiSettingsClient, testAiConnection } from "@/lib/data/client";
 
 type SettingsView = {
   configured: boolean;
@@ -12,9 +13,9 @@ type SettingsView = {
 };
 
 /**
- * AI 设置弹窗：配置平台级大模型 API（OpenAI 兼容）。
- * API Key 保存后掩码显示、不回显明文；留空保存 = 保留原值。
- * 环境变量可作为默认值，界面配置优先生效。
+ * AI 设置弹窗：配置大模型 API（OpenAI 兼容）。
+ * 完整版存服务端；静态演示版存浏览器本地（AI 由浏览器直连）。
+ * API Key 掩码显示，不回显明文；留空保存 = 保留原值。
  */
 export function AiSettingsDialog() {
   const [open, setOpen] = useState(false);
@@ -30,7 +31,7 @@ export function AiSettingsDialog() {
     setMsg(null);
     setBusy(true);
     try {
-      const v = (await fetch("/api/settings").then((r) => r.json())) as SettingsView;
+      const v = await getAiSettingsView();
       setView(v);
       setBaseUrl(v.aiBaseUrl);
       setModel(v.aiModel);
@@ -44,23 +45,12 @@ export function AiSettingsDialog() {
     setMsg({ kind: "info", text: "测试中…（最长 30 秒）" });
     setBusy(true);
     try {
-      const res = await fetch("/api/settings/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          aiBaseUrl: baseUrl,
-          aiApiKey: apiKey, // 留空则用已生效配置测试
-          aiModel: model,
-        }),
-      });
-      const out = await res.json();
+      const out = await testAiConnection({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
       setMsg(
         out.ok
           ? { kind: "ok", text: `连接成功（${(out.elapsed / 1000).toFixed(1)}s），模型返回正常` }
           : { kind: "err", text: out.error ?? "连接失败" },
       );
-    } catch {
-      setMsg({ kind: "err", text: "网络错误，请重试" });
     } finally {
       setBusy(false);
     }
@@ -69,11 +59,7 @@ export function AiSettingsDialog() {
   async function save() {
     setBusy(true);
     try {
-      const v = (await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model }),
-      }).then((r) => r.json())) as SettingsView;
+      const v = await saveAiSettingsClient({ aiBaseUrl: baseUrl, aiApiKey: apiKey, aiModel: model });
       setView(v);
       setApiKey("");
       setMsg({ kind: "ok", text: "已保存，AI 功能立即生效" });
@@ -116,7 +102,7 @@ export function AiSettingsDialog() {
                 <span className="text-amber-700">未配置——AI 功能使用本地规则引擎兜底</span>
               )}
               <br />
-              兼容 GLM / DeepSeek / 通义等 OpenAI 格式接口；Key 仅保存在本服务器，不回显明文。
+              兼容 GLM / DeepSeek / 通义等 OpenAI 格式接口；Key 不会回显明文。
             </p>
             <div className="space-y-3">
               <label className="block">
