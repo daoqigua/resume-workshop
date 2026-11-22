@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: "Noto Sans SC", "Source Han Sans SC", "Microsoft YaHei",
+    system-ui, sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  color: #1f2328;
+  background: #f3f5f9;
+}
+
+/* 模板内部自控字号，不继承编辑器/正文样式 */
+.resume-root,
+.resume-root * {
+  box-sizing: border-box;
+}

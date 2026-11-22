@@ -1,0 +1,57 @@
+// 生产环境数据模型（PostgreSQL）。
+// 当前 MVP 使用本地文件存储（lib/resume/store.ts，接口同构）；
+// 切换时：npm i prisma @prisma/client → npx prisma migrate dev → 用同签名实现替换 store。
+// 依赖服务见 docker-compose.yml（postgres + redis）。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  phone     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  resumes   Resume[]
+}
+
+model Resume {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  title      String
+  /// JSON Resume 风格的结构化简历数据
+  data       Json
+  /// 模板与排版设置（template/fontFamily/fontSize/pageMargin/themeColor）
+  settings   Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  versions   ResumeVersion[]
+}
+
+/// 一岗一简历：每个版本可绑定一个目标 JD（M2）
+model ResumeVersion {
+  id         String   @id @default(cuid())
+  resumeId   String
+  resume     Resume  @relation(fields: [resumeId], references: [id])
+  label      String
+  data       Json
+  targetJd   Json?
+  matchScore Int?
+  createdAt  DateTime @default(now())
+}
+
+model DiagnosisReport {
+  id        String   @id @default(cuid())
+  resumeId  String
+  score     Int
+  issues    Json
+  aiSummary String?
+  createdAt DateTime @default(now())
+}
