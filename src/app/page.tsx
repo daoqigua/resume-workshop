@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listResumes, ensureSeedClient } from "@/lib/data/client";
+import {
+  listResumes,
+  ensureSeedClient,
+  deleteResume,
+} from "@/lib/data/client";
 import { SAMPLE_RESUME } from "@/lib/resume/sample";
 import { HomeActions } from "@/components/home/HomeActions";
 import { AiSettingsDialog } from "@/components/settings/AiSettingsDialog";
@@ -19,6 +23,12 @@ export default function Home() {
       setResumes(await listResumes());
     })();
   }, []);
+
+  async function onDelete(id: string, title: string) {
+    if (!window.confirm(`确定删除「${title}」吗？删除后不可恢复。`)) return;
+    await deleteResume(id);
+    setResumes(await listResumes());
+  }
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
@@ -80,12 +90,21 @@ export default function Home() {
                     更新于 {new Date(r.updatedAt).toLocaleString("zh-CN")}
                   </div>
                 </div>
-                <Link
-                  href={`/editor?id=${r.id}`}
-                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-                >
-                  打开编辑
-                </Link>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Link
+                    href={`/editor?id=${r.id}`}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+                  >
+                    打开编辑
+                  </Link>
+                  <button
+                    onClick={() => onDelete(r.id, r.title)}
+                    className="rounded border border-red-200 px-2.5 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                    title="删除该简历"
+                  >
+                    删除
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
