@@ -48,3 +48,5 @@ gui-test-screenshots/
 .env*.local
 
 !.env.example
+
+out/
